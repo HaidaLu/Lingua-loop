@@ -1,0 +1,19 @@
+# secrets — never commit
+.env
+*.env
+!.env.example
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# node
+node_modules/
+
+# local data
+*.db
+*.db-journal
+backend/media/
+
+.DS_Store
