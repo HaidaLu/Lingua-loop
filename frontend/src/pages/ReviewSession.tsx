@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import CardView from "../components/CardView";
+import EditCardForm from "../components/EditCardForm";
 import { api } from "../api";
-import type { GenerateCardResponse, Rating, ReviewItem } from "../types";
+import type { GenerateCardResponse, Rating, ReviewItem, WordUpdate } from "../types";
 
 const RATINGS: { rating: Rating; label: string; hint: string; cls: string }[] = [
   { rating: 1, label: "Again", hint: "no recall", cls: "again" },
@@ -15,6 +16,9 @@ export default function ReviewSession() {
   const [queue, setQueue] = useState<ReviewItem[]>([]);
   const [idx, setIdx] = useState(0);
   const [revealed, setRevealed] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(0);
@@ -40,6 +44,7 @@ export default function ReviewSession() {
         await api.submitReview(current.word.id, rating);
         setDone((d) => d + 1);
         setRevealed(false);
+        setEditing(false);
         setIdx((i) => i + 1);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -50,9 +55,31 @@ export default function ReviewSession() {
     [current, submitting],
   );
 
+  const saveEdit = useCallback(
+    async (patch: WordUpdate) => {
+      if (!current) return;
+      setSavingEdit(true);
+      setEditError(null);
+      try {
+        const updated = await api.updateCard(current.word.id, patch);
+        setQueue((q) =>
+          q.map((it, i) =>
+            i === idx ? { ...it, word: updated.word, fsrs: updated.fsrs } : it,
+          ),
+        );
+        setEditing(false);
+      } catch (e) {
+        setEditError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setSavingEdit(false);
+      }
+    },
+    [current, idx],
+  );
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (!current) return;
+      if (!current || editing) return;
       if (!revealed && (e.key === " " || e.key === "Enter")) {
         e.preventDefault();
         setRevealed(true);
@@ -62,7 +89,7 @@ export default function ReviewSession() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [current, revealed, grade]);
+  }, [current, revealed, editing, grade]);
 
   if (loading) return <main className="page"><p className="muted">Loading review queue…</p></main>;
   if (error) return <main className="page"><div className="error">{error}</div></main>;
@@ -101,8 +128,31 @@ export default function ReviewSession() {
             {w.prompt ? "recall the word" : w.language.toUpperCase()} · click or press Space to reveal
           </div>
         </div>
+      ) : editing ? (
+        <>
+          {editError && <div className="error">{editError}</div>}
+          <EditCardForm
+            data={fakeCard}
+            busy={savingEdit}
+            onCancel={() => {
+              setEditError(null);
+              setEditing(false);
+            }}
+            onSave={saveEdit}
+          />
+        </>
       ) : (
         <>
+          <div className="detail-actions">
+            <button
+              onClick={() => {
+                setEditError(null);
+                setEditing(true);
+              }}
+            >
+              Edit card
+            </button>
+          </div>
           <CardView data={fakeCard} />
           <div className="rating-row">
             {RATINGS.map((r) => (
