@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import type { Language } from "../types";
 import { api } from "../api";
-import { loadYouglish, sanitizeYouglishQuery, ygLangName, type YGWidget } from "../youglish";
+import {
+  loadYouglish,
+  sanitizeYouglishQuery,
+  youglishTermFor,
+  ygLangName,
+  type YGWidget,
+} from "../youglish";
 
 // components: 2 caption + 4 video info + 8 controls = 14 (no search box; query comes from the card)
 const COMPONENTS = 14;
@@ -26,8 +32,8 @@ export default function YouglishWidget({
 
   // 1. figure out what to actually search on YouGlish
   const [query, setQuery] = useState<string | null>(() => {
-    if (storedTerm && storedTerm.trim()) return storedTerm.trim();
-    const local = sanitizeYouglishQuery(word);
+    if (storedTerm && storedTerm.trim()) return youglishTermFor(storedTerm, language);
+    const local = sanitizeYouglishQuery(word, language);
     return local || (wordId ? null : ""); // null => ask the backend; "" => nothing usable
   });
   const [resolving, setResolving] = useState(query === null);
@@ -39,10 +45,11 @@ export default function YouglishWidget({
     api
       .youglishTerm(wordId)
       .then((r) => {
-        if (!cancelled) setQuery(sanitizeYouglishQuery(r.term) || r.term.trim() || "");
+        if (!cancelled)
+          setQuery(sanitizeYouglishQuery(r.term, language) || youglishTermFor(r.term, language) || "");
       })
       .catch(() => {
-        if (!cancelled) setQuery(sanitizeYouglishQuery(word) || "");
+        if (!cancelled) setQuery(sanitizeYouglishQuery(word, language) || "");
       })
       .finally(() => {
         if (!cancelled) setResolving(false);

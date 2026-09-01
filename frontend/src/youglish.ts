@@ -60,15 +60,31 @@ export function ygLangName(language: "en" | "de"): string {
 
 // YouGlish's API rejects long / punctuation-heavy queries with HTTP 400. Reduce
 // whatever the card carries to something it will accept; return "" if nothing usable.
-export function sanitizeYouglishQuery(raw: string): string {
+// For German the leading article (der/die/das) is dropped — searching "die Sorge"
+// matches far fewer clips than "Sorge", and the gender is already on the card.
+export function sanitizeYouglishQuery(raw: string, language?: "en" | "de"): string {
   let s = (raw || "").split("\n")[0];
   s = s.replace(/\[[^\]]*\]/g, " "); // [sound:...] and other bracket tags
   s = s.replace(/[()[\]{}"'|<>*_/\\]/g, " ");
   s = s.replace(/\s+/g, " ").trim();
   s = s.replace(/[\s,;:–—-]+(der|die|das)$/i, ""); // trailing German article marker
   s = s.replace(/^[^\p{L}]+|[.!?,;:]+$/gu, "").trim(); // trim edge punctuation
+  if (language === "de") s = stripGermanArticle(s);
   if (/[㐀-鿿]/.test(s)) return ""; // CJK: not a Latin-script query
   const words = s.split(" ").filter(Boolean);
   if (words.length > 4) return ""; // a whole sentence — no good headword to guess here
   return words.join(" ").slice(0, 60);
+}
+
+// "die Sorge" -> "Sorge"; leaves article-less input untouched. Only strips when a
+// capitalised noun follows, so it never eats the first word of a verb/adj phrase.
+export function stripGermanArticle(s: string): string {
+  return s.replace(/^(der|die|das)\s+(?=[A-ZÄÖÜ])/, "");
+}
+
+// An already-clean term (backend-resolved or stored), made ready for a YouGlish
+// search: for German, without its leading article.
+export function youglishTermFor(term: string, language: "en" | "de"): string {
+  const t = (term || "").trim();
+  return language === "de" ? stripGermanArticle(t) : t;
 }

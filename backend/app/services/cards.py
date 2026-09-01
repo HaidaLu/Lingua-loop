@@ -259,13 +259,22 @@ _YG_PUNCT = re.compile(r"""[.!?;:,/()\[\]{}"'|<>*]""")
 _CJK = re.compile(r"[㐀-鿿]")
 
 
-def _sanitize_term(raw: str) -> str:
+def _strip_de_article(term: str) -> str:
+    """"die Sorge" -> "Sorge". YouGlish matches far more clips without the article,
+    and the card already shows the gender."""
+    return re.sub(r"^(der|die|das)\s+(?=[A-ZÄÖÜ])", "", term).strip()
+
+
+def _sanitize_term(raw: str, language: str | None = None) -> str:
     text = (raw or "").split("\n", 1)[0].strip()
     text = re.sub(r"\s+", " ", text)
     # drop a trailing German article marker like ", der" / " – die"
     text = re.sub(r"\s*[,–—-]\s*(der|die|das)$", "", text, flags=re.IGNORECASE)
     text = re.sub(r"^[^\w]+|[^\w]+$", "", text)  # trim leading/trailing punctuation
-    return text.strip()
+    text = text.strip()
+    if language == "de":
+        text = _strip_de_article(text)
+    return text
 
 
 def _term_looks_messy(term: str) -> bool:
@@ -288,9 +297,10 @@ def resolve_youglish_term(session: Session, word_id: int) -> YouglishTermRespons
         raise HTTPException(status_code=404, detail="word not found")
 
     if w.youglish_term:
-        return YouglishTermResponse(term=w.youglish_term, resolved_by="stored")
+        term = _strip_de_article(w.youglish_term) if w.language == "de" else w.youglish_term
+        return YouglishTermResponse(term=term, resolved_by="stored")
 
-    sanitized = _sanitize_term(w.word)
+    sanitized = _sanitize_term(w.word, w.language)
 
     if not _term_looks_messy(sanitized):
         w.youglish_term = sanitized
@@ -303,7 +313,7 @@ def resolve_youglish_term(session: Session, word_id: int) -> YouglishTermRespons
     context = examples[0] if examples else (w.translation or None)
     try:
         card = get_generator().generate(w.word, w.language, context)
-        term = _sanitize_term(card.headword) or sanitized
+        term = _sanitize_term(card.headword, w.language) or sanitized
         if _term_looks_messy(term):
             raise ValueError("llm headword still not usable")
         w.youglish_term = term
